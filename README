@@ -1,0 +1,47 @@
+HBaseHUT:
+---------
+http://github.com/sematext/HBaseHUT
+
+November 2010
+
+Released under Apache License 2.0.
+
+Description:
+------------
+HBaseHUT stands for High Updates Throughput for HBase. It was inspired by
+discussions on HBase mailing lists around the problem with having Get&Put
+for each update operation, which affects write throughput dramatically.
+Another force behind going the way used in HBaseHUT was recent activity on
+Coprocessors development (though implementation currently doesn't use CP
+it is designed with making use of it in mind): it adds more flexibility
+when it comes to alternate to MapReduce data processing approaches, which
+will be used in future implementation.
+
+The idea behind HBaseHut is:
+* Don't do update of existing data on each put (and hence don't perform
+  Get operation for each put operation). All puts are plain puts with the
+  relevant pure-insert write performance.
+* Defer processing updates to scheduled job or perform updates on
+  as-needed basis.
+* Serve updated data in "online" manner: user always gets updated record
+  immediately after new data was put, i.e. user "sees" updates immediately
+  after he writes data.
+
+For more information please refer to the github project wiki.
+
+Creator & Owner:
+--------
+Alex Baranau
+
+Build Notes:
+------------
+Current pom configured to build against 0.89.20100924.
+HBase jars are provided with sources, as only HBase's trunk sources
+were mavenized and available in public repos.
+Tests take some time to execute (up to several minutes), to skip
+their execution use -Dmaven.skip.tests=true.
+
+HBase Version Compatibility:
+----------------------------
+Compatible with HBase 0.20.5 - 0.89.XXX.
+May be compatible with previous: tests needed (TODO)
