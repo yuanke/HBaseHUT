@@ -15,11 +15,11 @@ Description:
 HBaseHUT stands for High Updates Throughput for HBase. It was inspired by
 discussions on HBase mailing lists around the problem with having Get&Put
 for each update operation, which affects write throughput dramatically.
-Another force behind going the way used in HBaseHUT was recent activity on
-Coprocessors development (though implementation currently doesn't use CP
-it is designed with making use of it in mind): it adds more flexibility
-when it comes to alternate to MapReduce data processing approaches, which
-will be used in future implementation.
+Another force behind behind the approach used in HBaseHUT was recent
+activity on Coprocessors development (though implementation currently
+doesn't use CP it is designed with making use of it in mind): it adds more
+flexibility when it comes to alternate to MapReduce data processing
+approaches, which will be used in future implementation.
 
 The idea behind HBaseHut is:
 * Don't do updates of existing data on each put (and hence don't perform
@@ -31,7 +31,13 @@ The idea behind HBaseHut is:
   immediately after new data was put, i.e. user "sees" updates immediately
   after he writes data.
 
-For more information please refer to the github project wiki: https://github.com/sematext/HBaseHUT/wiki.
+For more information please refer to the github project wiki:
+https://github.com/sematext/HBaseHUT/wiki.
+
+Mailing list:
+-------------
+To participate more in the discussion, join the group at
+https://groups.google.com/group/hbasehut/
 
 Build Notes:
 ------------
