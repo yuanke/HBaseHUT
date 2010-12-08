@@ -16,12 +16,10 @@
 package com.sematext.hbase.hut;
 
 import org.apache.hadoop.hbase.KeyValue;
-import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
-import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.util.Bytes;
 
 import java.io.IOException;
@@ -49,25 +47,35 @@ public class HutResultScanner implements ResultScanner {
   }
 
   public HutResultScanner(ResultScanner resultScanner, UpdateProcessor updateProcessor, HTable hTable, boolean storeProcessedUpdates) {
-    if (storeProcessedUpdates && hTable == null) {
-      throw new IllegalArgumentException("HTable is null, but access to it required for storing processed updates back.");
-    }
+    verifyInitParams(resultScanner, updateProcessor, hTable, storeProcessedUpdates);
     this.resultScanner = resultScanner;
     this.updateProcessor = updateProcessor;
     this.storeProcessedUpdates = storeProcessedUpdates;
     this.hTable = hTable;
   }
 
+  void verifyInitParams(ResultScanner resultScanner, UpdateProcessor updateProcessor, HTable hTable, boolean storeProcessedUpdates) {
+    if (resultScanner == null) {
+      throw new IllegalArgumentException("ResultScanner should NOT be null.");
+    }
+    if (updateProcessor == null) {
+      throw new IllegalArgumentException("UpdateProcessor should NOT be null.");
+    }
+    if (storeProcessedUpdates && hTable == null) {
+      throw new IllegalArgumentException("HTable is null, but access to it required for storing processed updates back.");
+    }
+  }
+
   @Override
   public Result next() throws IOException {
-    Result firstResult = nonConsumed != null ? nonConsumed : resultScanner.next();
+    Result firstResult = nonConsumed != null ? nonConsumed : fetchNext();
     nonConsumed = null;
 
     if (firstResult == null) {
       return firstResult;
     }
 
-    Result nextToFirstResult = resultScanner.next();
+    Result nextToFirstResult = fetchNext();
     if (nextToFirstResult == null) {
       return firstResult;
     }
@@ -92,6 +100,10 @@ public class HutResultScanner implements ResultScanner {
     }
 
     return result;
+  }
+
+  Result fetchNext() throws IOException {
+    return resultScanner.next();
   }
 
   @Override
@@ -242,7 +254,7 @@ public class HutResultScanner implements ResultScanner {
           // skipping records that are stored before processing result
           while (HutRowKeyUtil.sameRecords(first.getRow(), nextToFirst.getRow())) {
             next = nextToFirst;
-            nextToFirst = resultScanner.next();
+            nextToFirst = fetchNext();
             if (nextToFirst == null) {
               return;
             }
@@ -268,7 +280,7 @@ public class HutResultScanner implements ResultScanner {
           return true;
         }
         try {
-          Result nextCandidate = nonConsumed != null ? nonConsumed : resultScanner.next();
+          Result nextCandidate = nonConsumed != null ? nonConsumed : fetchNext();
           if (nextCandidate == null) {
             exhausted = true;
             return false;
@@ -288,7 +300,7 @@ public class HutResultScanner implements ResultScanner {
           // and deleting all processed records in the interval is not atomic.
           // Also allows not to delete records at all during compaction (in case we want and able to process them more than once).
           while (lastRead != null && sameOriginalKeys && !HutRowKeyUtil.isAfter(nextCandidate.getRow(), lastRead.getRow())) {
-            nextCandidate = resultScanner.next();
+            nextCandidate = fetchNext();
             if (nextCandidate == null) {
               exhausted = true;
               return false;
@@ -307,14 +319,14 @@ public class HutResultScanner implements ResultScanner {
 
           // Skipping those which were processed but haven't deleted yet (very small chance to face this)
           // skipping records that are stored before processing result
-          Result afterNextCandidate = resultScanner.next();
+          Result afterNextCandidate = fetchNext();
           if (afterNextCandidate == null) {
             return true;
           }
 
           while (HutRowKeyUtil.sameRecords(nextCandidate.getRow(), afterNextCandidate.getRow())) {
             next = afterNextCandidate;
-            afterNextCandidate = resultScanner.next();
+            afterNextCandidate = fetchNext();
             if (afterNextCandidate == null) {
               return true;
             }
@@ -357,9 +369,6 @@ public class HutResultScanner implements ResultScanner {
     }
   }
 
-  // Can be converted to local variable, but we want to reuse list instance
-  private ArrayList<Delete> listToDelete = new ArrayList<Delete>();
-
   private void storeProcessedUpdates(Result first, Result last) throws IOException {
     byte[] firstRow = first.getRow();
     byte[] row = Arrays.copyOf(firstRow, firstRow.length);
@@ -370,9 +379,13 @@ public class HutResultScanner implements ResultScanner {
       overrideRow(kv, row);
       put.add(kv);
     }
-    hTable.put(put);
 
+    store(put);
     deleteProcessedRecords(first.getRow(), last.getRow(), row);
+  }
+
+  void store(Put put) throws IOException {
+    hTable.put(put);
   }
 
   // NOTE: this works only when rows has the same length, and doesn't invalidate row cache
@@ -381,22 +394,7 @@ public class HutResultScanner implements ResultScanner {
   }
 
   void deleteProcessedRecords(byte[] firstInclusive, byte[] lastInclusive, byte[] processingResultToLeave) throws IOException {
-    Scan scan = new Scan(firstInclusive, lastInclusive);
-    ResultScanner toDeleteScanner = hTable.getScanner(scan);
-    // skipping first: it is a result of processing, should be left
-    Result toDelete = toDeleteScanner.next();
-    listToDelete.clear();
-    while (toDelete != null) {
-      if (!Bytes.equals(processingResultToLeave, toDelete.getRow())) {
-        listToDelete.add(new Delete(toDelete.getRow()));
-      }
-      toDelete = toDeleteScanner.next();
-    }
-    // it is omitted during scan, since stopRow specified for scan means "non-inclusive", so adding here
-    if (!Bytes.equals(processingResultToLeave, lastInclusive)) {
-      listToDelete.add(new Delete(lastInclusive));
-    }
-
-    hTable.delete(listToDelete);
+    HTableUtil.deleteRange(hTable, firstInclusive, lastInclusive, processingResultToLeave);
   }
+
 }

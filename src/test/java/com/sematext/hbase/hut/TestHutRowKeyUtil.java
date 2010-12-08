@@ -41,6 +41,8 @@ public class TestHutRowKeyUtil {
     // set key2 to hover interval from key2 to key4
     byte[] key2Copy = Arrays.copyOf(key2, key2.length);
     HutRowKeyUtil.setIntervalEnd(key2, key4);
+    Assert.assertArrayEquals(key2Copy, HutRowKeyUtil.getStartRowOfInterval(key2));
+    Assert.assertArrayEquals(key4, HutRowKeyUtil.getEndRowOfInterval(key2));
     Assert.assertTrue(HutRowKeyUtil.sameRecords(key2Copy, key2));
     Assert.assertFalse(HutRowKeyUtil.isAfter(key3, key2));
     Assert.assertFalse(HutRowKeyUtil.isAfter(key4, key2));

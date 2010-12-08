@@ -15,6 +15,7 @@
  */
 package com.sematext.hbase.hut;
 
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Put;
@@ -22,6 +23,7 @@ import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.mapreduce.Job;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -278,7 +280,54 @@ public class TestHBaseHut {
     hTable.close();
   }
 
-  public static void performUpdatesProcessingButWithoutDeletionOfProcessedRecords(final HTable hTable, UpdateProcessor updateProcessor) throws IOException {
+  // TODO: add more test-cases for MR job
+  @Test
+  public void testUpdatesProcessingMrJob() throws IOException, InterruptedException, ClassNotFoundException {
+    String tableName = "stock-market";
+    HTable hTable = testingUtility.createTable(Bytes.toBytes(tableName), SALE_CF);
+    testingUtility.startMiniMapReduceCluster();
+
+
+    try {
+      // Writing data
+      byte[] chrysler = Bytes.toBytes("chrysler");
+      byte[] ford = Bytes.toBytes("ford");
+      byte[] toyota = Bytes.toBytes("toyota");
+
+      for (int i = 0; i < 15; i++) {
+        byte[] company;
+        if (i % 2 == 0) {
+          company = ford;
+        } else {
+          company = chrysler;
+        }
+
+        recordSale(hTable, company, i);
+      }
+
+      recordSale(hTable, toyota, 23);
+
+      System.out.println(DebugUtil.getContent(hTable));
+
+      Configuration configuration = testingUtility.getConfiguration();
+      configuration.set("hut.mr.buffer.size", String.valueOf(10));
+      Job job = new Job(configuration);
+      UpdatesProcessingMrJob.initJob(tableName, new Scan(), StockSaleUpdateProcessor.class, job);
+
+      job.waitForCompletion(true);
+
+      System.out.println(DebugUtil.getContent(hTable));
+
+      verifyLastSalesWithNativeScanner(hTable, ford, new int[] {14, 12, 10, 8, 6});
+      verifyLastSalesWithNativeScanner(hTable, chrysler, new int[] {13, 11, 9, 7, 5});
+      verifyLastSalesWithNativeScanner(hTable, toyota, new int[] {23});
+
+    } finally { // TODO: do we really need try/finally block here?
+      testingUtility.shutdownMiniMapReduceCluster();
+    }
+  }
+
+  private static void performUpdatesProcessingButWithoutDeletionOfProcessedRecords(final HTable hTable, UpdateProcessor updateProcessor) throws IOException {
     ResultScanner resultScanner =
             new HutResultScanner(hTable.getScanner(new Scan()), updateProcessor, hTable, true) {
               @Override

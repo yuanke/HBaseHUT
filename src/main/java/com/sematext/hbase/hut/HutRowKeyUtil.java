@@ -30,49 +30,67 @@ public final class HutRowKeyUtil {
 
   private HutRowKeyUtil() {}
 
-  public static byte[] getOriginalKey(byte[] hrtRowKey) {
-    return Bytes.head(hrtRowKey, hrtRowKey.length - Bytes.SIZEOF_LONG * 2);
+  public static byte[] getOriginalKey(byte[] hutRowKey) {
+    return Bytes.head(hutRowKey, hutRowKey.length - Bytes.SIZEOF_LONG * 2);
   }
 
-  static boolean sameOriginalKeys(byte[] hrtRowKey1, byte[] hrtRowKey2) {
-    return 0 == Bytes.compareTo(hrtRowKey1, 0, hrtRowKey1.length - Bytes.SIZEOF_LONG * 2,
-                                hrtRowKey2, 0, hrtRowKey2.length - Bytes.SIZEOF_LONG * 2);
+  static boolean sameOriginalKeys(byte[] hutRowKey1, byte[] hutRowKey2) {
+    return 0 == Bytes.compareTo(hutRowKey1, 0, hutRowKey1.length - Bytes.SIZEOF_LONG * 2,
+                                hutRowKey2, 0, hutRowKey2.length - Bytes.SIZEOF_LONG * 2);
   }
 
   // TODO: rename it or explain
-  static boolean sameRecords(byte[] hrtRowKey1, byte[] hrtRowKey2) {
-    return 0 == Bytes.compareTo(hrtRowKey1, 0, hrtRowKey1.length - Bytes.SIZEOF_LONG,
-                                hrtRowKey2, 0, hrtRowKey2.length - Bytes.SIZEOF_LONG);
+  static boolean sameRecords(byte[] hutRowKey1, byte[] hutRowKey2) {
+    return 0 == Bytes.compareTo(hutRowKey1, 0, hutRowKey1.length - Bytes.SIZEOF_LONG,
+                                hutRowKey2, 0, hutRowKey2.length - Bytes.SIZEOF_LONG);
   }
 
   /**
    * Is first key goes after the interval defined by the second key
-   * @param hrtRowKeyToCompare first key
-   * @param hrtRowKey second key
+   * @param hutRowKeyToCompare first key
+   * @param hutRowKey second key
    * @return true if second key goes after the first key
    */
-  static boolean isAfter(byte[] hrtRowKeyToCompare, byte[] hrtRowKey) {
+  static boolean isAfter(byte[] hutRowKeyToCompare, byte[] hutRowKey) {
     // comparing creationTime of second key with intervalEnd of the first key
-    return Bytes.compareTo(hrtRowKeyToCompare, hrtRowKeyToCompare.length - Bytes.SIZEOF_LONG * 2, Bytes.SIZEOF_LONG,
-                                hrtRowKey, hrtRowKey.length - Bytes.SIZEOF_LONG, Bytes.SIZEOF_LONG) > 0;
+    return Bytes.compareTo(hutRowKeyToCompare, hutRowKeyToCompare.length - Bytes.SIZEOF_LONG * 2, Bytes.SIZEOF_LONG,
+                                hutRowKey, hutRowKey.length - Bytes.SIZEOF_LONG, Bytes.SIZEOF_LONG) > 0;
   }
 
-  static byte[] createNewKey(byte[] hrtRowKey, long creationTime) {
-    return Bytes.add(hrtRowKey, Bytes.toBytes(creationTime), NOT_SET_MARK);
+  static byte[] createNewKey(byte[] rowKeyWithIntervalStart, long creationTime) {
+    return Bytes.add(rowKeyWithIntervalStart, Bytes.toBytes(creationTime), NOT_SET_MARK);
   }
 
-  static void setIntervalEnd(byte[] hrtRowKey, byte[] lastRowKeyInInterval) {
+  static byte[] getStartRowOfInterval(byte[] hutRowKey) {
+    byte[] startRow = new byte[hutRowKey.length];
+    System.arraycopy(hutRowKey, 0, startRow, 0, hutRowKey.length - Bytes.SIZEOF_LONG);
+    System.arraycopy(NOT_SET_MARK, 0,
+                     startRow, hutRowKey.length - Bytes.SIZEOF_LONG, Bytes.SIZEOF_LONG);
+    return startRow;
+  }
+
+  static byte[] getEndRowOfInterval(byte[] hutRowKey) {
+    byte[] endRow = new byte[hutRowKey.length];
+    System.arraycopy(hutRowKey, 0, endRow, 0, hutRowKey.length - 2 * Bytes.SIZEOF_LONG);
+    System.arraycopy(hutRowKey, hutRowKey.length - Bytes.SIZEOF_LONG,
+            endRow, hutRowKey.length - 2 * Bytes.SIZEOF_LONG, Bytes.SIZEOF_LONG);
+    System.arraycopy(NOT_SET_MARK, 0,
+                     endRow, hutRowKey.length - Bytes.SIZEOF_LONG, Bytes.SIZEOF_LONG);
+    return endRow;
+  }
+
+  static void setIntervalEnd(byte[] hutRowKey, byte[] lastRowKeyInInterval) {
     boolean isIntervalEndSetForLastRowKey =
             Bytes.compareTo(lastRowKeyInInterval, lastRowKeyInInterval.length - Bytes.SIZEOF_LONG, Bytes.SIZEOF_LONG,
                     NOT_SET_MARK, 0, NOT_SET_MARK.length) != 0;
     if (isIntervalEndSetForLastRowKey) {
-      // setting hrtRowKey.intervalEnd = lastRowKeyInInterval.intervalEnd
+      // setting hutRowKey.intervalEnd = lastRowKeyInInterval.intervalEnd
       System.arraycopy(lastRowKeyInInterval, lastRowKeyInInterval.length - Bytes.SIZEOF_LONG,
-                       hrtRowKey, hrtRowKey.length - Bytes.SIZEOF_LONG, Bytes.SIZEOF_LONG);
+                       hutRowKey, hutRowKey.length - Bytes.SIZEOF_LONG, Bytes.SIZEOF_LONG);
     } else {
-      // setting hrtRowKey.intervalEnd = lastRowKeyInInterval.creationTime
+      // setting hutRowKey.intervalEnd = lastRowKeyInInterval.creationTime
       System.arraycopy(lastRowKeyInInterval, lastRowKeyInInterval.length - Bytes.SIZEOF_LONG * 2,
-                       hrtRowKey, hrtRowKey.length - Bytes.SIZEOF_LONG, Bytes.SIZEOF_LONG);
+                       hutRowKey, hutRowKey.length - Bytes.SIZEOF_LONG, Bytes.SIZEOF_LONG);
     }
   }
 }
