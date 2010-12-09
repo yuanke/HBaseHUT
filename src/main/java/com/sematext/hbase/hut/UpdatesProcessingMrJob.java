@@ -44,17 +44,22 @@ public final class UpdatesProcessingMrJob {
     public static final String HUT_PROCESSOR_CLASS_ATTR = "hut.processor.class";
     private static final Log LOG = LogFactory.getLog(UpdatesProcessingMapper.class);
 
-    private int bufferMaxSize = 1000; // default value
-    private DetachedHutResultScanner resultScanner;
+    // buffer for items read by map()
+    private int bufferMaxSize = 1000; // can be overridden by HUT_MR_BUFFER_SIZE_ATTR attribute in configuration
     private Result[] buff;
-    private int filledInBuff;
-    private int nextInBuff;
+    // these two volatile variables needed to provide visibility of changes made by two threads
+    private volatile int filledInBuff;
+    private volatile int nextInBuff;
+
     private Thread processingThread;
-    private volatile boolean failed;
-    ReentrantLock lock = new ReentrantLock(false);
+
+    private ReentrantLock lock = new ReentrantLock(false);
     private Condition waitingOnEmptyBuffer = lock.newCondition();
-    Condition waitingOnAllBufferConsumed = lock.newCondition();
-    volatile boolean mapTaskFinished;
+    private Condition waitingOnAllBufferConsumed = lock.newCondition();
+
+    // map task state
+    private volatile boolean failed;
+    private volatile boolean finished;
 
     // No need to make buff operations thread-safe as buffer is going to accessed from single thread at a time
     private boolean isBufferExhausted() {
@@ -126,14 +131,14 @@ public final class UpdatesProcessingMrJob {
       Result fetchNext() throws IOException {
         // trying to fetch data from nextItemsToFetch buffer
         if (isBufferExhausted()) {
-          if (mapTaskFinished) { // no more items expected
+          if (finished) { // no more items expected
             return null;
           }
           lock.lock();
           try {
-            waitingOnAllBufferConsumed.signal();
             while (isBufferExhausted()) {
               try {
+                waitingOnAllBufferConsumed.signal();
                 waitingOnEmptyBuffer.await();
               } catch (InterruptedException e) {
                 // DO NOTHING
@@ -165,8 +170,8 @@ public final class UpdatesProcessingMrJob {
       if (isBufferFull()) {
         try {
           lock.lock();
-          waitingOnEmptyBuffer.signal();
           while (!isBufferExhausted()) {
+            waitingOnEmptyBuffer.signal();
             waitingOnAllBufferConsumed.await();
           }
         } finally {
@@ -185,8 +190,7 @@ public final class UpdatesProcessingMrJob {
       if (updatesProcessorClass == null) {
         throw new IllegalStateException("hut.processor.class missed in the configuration");
       }
-      UpdateProcessor updateProcessor = createInstance(updatesProcessorClass, UpdateProcessor.class);
-      resultScanner = new DetachedHutResultScanner(updateProcessor);
+      final UpdateProcessor updateProcessor = createInstance(updatesProcessorClass, UpdateProcessor.class);
 
       String bufferSizeValue =  context.getConfiguration().get(HUT_MR_BUFFER_SIZE_ATTR);
       if (bufferSizeValue == null) {
@@ -198,12 +202,13 @@ public final class UpdatesProcessingMrJob {
       buff = new Result[bufferMaxSize];
       filledInBuff = 0;
       nextInBuff = 0;
-      mapTaskFinished = false;
+      finished = false;
       failed = false;
 
       processingThread = new Thread(new Runnable() {
         @Override
         public void run() {
+          DetachedHutResultScanner resultScanner = new DetachedHutResultScanner(updateProcessor);
           try {
             Result res = resultScanner.next();
             while (res != null) {
@@ -230,7 +235,7 @@ public final class UpdatesProcessingMrJob {
       if (!isBufferExhausted()) { // passing non-consumed items
         try {
           lock.lock();
-          mapTaskFinished = true;
+          finished = true;
           waitingOnEmptyBuffer.signal();
         } finally {
           lock.unlock();
