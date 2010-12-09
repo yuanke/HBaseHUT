@@ -68,18 +68,12 @@ public final class UpdatesProcessingMrJob {
 
     // No need to make buff operations thread-safe as buffer is going to accessed from single thread at a time
     private boolean isBufferFull() {
-      boolean full = filledInBuff >= bufferMaxSize;
-      if (full) {
-        System.out.println("buffer is full");
-      }
-      return full;
+      return filledInBuff >= bufferMaxSize;
     }
 
     // No need to make buff operations thread-safe as buffer is going to accessed from single thread at a time
     private Result popFromBuff() {
-      Result res = buff[nextInBuff++];
-      System.out.println("left: " + (filledInBuff - nextInBuff));
-      return res;
+      return buff[nextInBuff++];
     }
 
     // No need to make buff operations thread-safe as buffer is going to accessed from single thread at a time
@@ -89,7 +83,6 @@ public final class UpdatesProcessingMrJob {
         nextInBuff = 0;
       }
       buff[filledInBuff++] = result;
-      System.out.println("in buff now: " + (filledInBuff - nextInBuff));
     }
 
     /**
