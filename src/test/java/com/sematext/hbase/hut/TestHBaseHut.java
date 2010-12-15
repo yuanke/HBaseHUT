@@ -17,6 +17,7 @@ package com.sematext.hbase.hut;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
+import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
@@ -30,6 +31,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 /**
  * General unit-test for the whole concept 
@@ -327,6 +329,39 @@ public class TestHBaseHut {
     }
   }
 
+  @Test
+  public void testDelete() throws IOException, InterruptedException {
+    HTable hTable = testingUtility.createTable(Bytes.toBytes("stock-market"), SALE_CF);
+    StockSaleUpdateProcessor processor = new StockSaleUpdateProcessor();
+
+    // Writing data
+    byte[] chrysler = Bytes.toBytes("chrysler");
+    byte[] ford = Bytes.toBytes("ford");
+    Delete deleteChrysler = new Delete(chrysler);
+
+    // Verifying that delete operation succeeds when no data exists
+    hTable.delete(deleteChrysler);
+
+    verifyLastSales(hTable, processor, chrysler, new int[] {});
+    verifyLastSales(hTable, processor, ford, new int[] {});
+    recordSale(hTable, chrysler, 90);
+    recordSale(hTable, chrysler, 100);
+    recordSale(hTable, ford, 18);
+    recordSale(hTable, chrysler, 120);
+
+    HutUtil.delete(hTable, deleteChrysler);
+    verifyLastSales(hTable, processor, chrysler, new int[] {});
+    verifyLastSales(hTable, processor, ford, new int[] {18});
+
+    recordSale(hTable, chrysler, 115);
+    recordSale(hTable, ford, 22);
+    recordSale(hTable, chrysler, 110);
+    verifyLastSales(hTable, processor, chrysler, new int[] {110, 115});
+    verifyLastSales(hTable, processor, ford, new int[] {22, 18});
+
+    hTable.close();
+  }
+
   private static void performUpdatesProcessingButWithoutDeletionOfProcessedRecords(final HTable hTable, UpdateProcessor updateProcessor) throws IOException {
     ResultScanner resultScanner =
             new HutResultScanner(hTable.getScanner(new Scan()), updateProcessor, hTable, true) {
@@ -348,16 +383,23 @@ public class TestHBaseHut {
   }
 
   private static void verifyLastSalesWithNativeScanner(HTable hTable, byte[] company, int[] prices) throws IOException {
-    ResultScanner resultScanner = hTable.getScanner(new Scan(company));
+    ResultScanner resultScanner = hTable.getScanner(getCompanyScan(company));
     Result result = resultScanner.next();
     verifyLastSales(result, prices);
   }
 
   private static void verifyLastSales(HTable hTable, UpdateProcessor updateProcessor, byte[] company, int[] prices) throws IOException {
     ResultScanner resultScanner =
-            new HutResultScanner(hTable.getScanner(new Scan(company)), updateProcessor);
+            new HutResultScanner(hTable.getScanner(getCompanyScan(company)), updateProcessor);
     Result result = resultScanner.next();
     verifyLastSales(result, prices);
+  }
+
+  private static Scan getCompanyScan(byte[] company) {
+    byte[] stopRow = Arrays.copyOf(company, company.length);
+    stopRow[stopRow.length - 1] = (byte) (stopRow[stopRow.length - 1] + 1);
+    // setting stopRow to fetch exactly the company needed, otherwise if company's data is absent scan will go further to the next one
+    return new Scan(company, stopRow);
   }
 
   // pricesList - prices for all companies ordered alphabetically
@@ -372,7 +414,7 @@ public class TestHBaseHut {
   }
   private static void verifyLastSalesWithCompation(HTable hTable, UpdateProcessor updateProcessor, byte[] company, int[] prices) throws IOException {
     ResultScanner resultScanner =
-            new HutResultScanner(hTable.getScanner(new Scan(company)), updateProcessor, hTable, true);
+            new HutResultScanner(hTable.getScanner(getCompanyScan(company)), updateProcessor, hTable, true);
     Result result = resultScanner.next();
     verifyLastSales(result, prices);
   }

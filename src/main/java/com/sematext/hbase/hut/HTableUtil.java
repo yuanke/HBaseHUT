@@ -21,14 +21,14 @@ import java.util.ArrayList;
 /**
  * Provides utility methods on top of {@link org.apache.hadoop.hbase.client.HTable}
  */
-public final class HTableUtil {
+final class HTableUtil {
   private static final int DELETES_BUFFER_MAX_SIZE = 10000; // TODO: Make configurable by user ?
 
   private HTableUtil() {}
 
   public static void deleteRange(HTable hTable, byte[] firstInclusive, byte[] lastInclusive, byte[] processingResultToLeave) throws IOException {
-    Scan scan = new Scan(firstInclusive, lastInclusive);
-    ResultScanner toDeleteScanner = hTable.getScanner(scan);
+    Scan deleteScan = getDeleteScan(firstInclusive, lastInclusive);
+    ResultScanner toDeleteScanner = hTable.getScanner(deleteScan);
     Result toDelete = toDeleteScanner.next();
     // Huge number of deletes can eat up all memory, hence keeping buffer
     ArrayList<Delete> listToDelete = new ArrayList<Delete>(DELETES_BUFFER_MAX_SIZE);
@@ -50,5 +50,30 @@ public final class HTableUtil {
     if (listToDelete.size() > 0) {
       hTable.delete(listToDelete);
     }
+  }
+
+  public static void deleteRange(HTable hTable, byte[] firstInclusive, byte[] lastNonInclusive) throws IOException {
+    Scan deleteScan = getDeleteScan(firstInclusive, lastNonInclusive);
+    ResultScanner toDeleteScanner = hTable.getScanner(deleteScan);
+    Result toDelete = toDeleteScanner.next();
+    // Huge number of deletes can eat up all memory, hence keeping buffer
+    ArrayList<Delete> listToDelete = new ArrayList<Delete>(DELETES_BUFFER_MAX_SIZE);
+    while (toDelete != null) {
+      listToDelete.add(new Delete(toDelete.getRow()));
+      if (listToDelete.size() >= DELETES_BUFFER_MAX_SIZE) {
+        hTable.delete(listToDelete);
+        listToDelete.clear();
+      }
+      toDelete = toDeleteScanner.next();
+    }
+
+    if (listToDelete.size() > 0) {
+      hTable.delete(listToDelete);
+    }
+  }
+
+  private static Scan getDeleteScan(byte[] firstInclusive, byte[] lastNonInclusive) {
+    // TODO: think over limiting of fetched data: set single columnFam:qual with small value to fetch
+    return new Scan(firstInclusive, lastNonInclusive);
   }
 }
