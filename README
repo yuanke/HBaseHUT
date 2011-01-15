@@ -34,6 +34,10 @@ The idea behind HBaseHUT is:
 For more information please refer to the github project wiki:
 https://github.com/sematext/HBaseHUT/wiki.
 
+For a clear introductory post with a good HBaseHUT use-case read:
+http://blog.sematext.com/2010/12/16/deferring-processing-updates-to-increase-hbase-write-performance/
+
+
 Mailing List:
 -------------
 To participate more in the discussion, join the group at
